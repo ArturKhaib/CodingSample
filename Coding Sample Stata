@@ -1,0 +1,523 @@
+******************************************************
+****** Graphs & tables examples
+******************************************************
+
+cd "C:\Users\Admin\Downloads\"
+use "updated_merged_data_trans_21_22.dta", clear
+************************************************************
+**************** Table Level_One
+************************************************************
+preserve
+gen count = 1
+collapse (sum) count, by(level_one)
+sort count
+gen rank = _n
+keep if rank > 20
+save "top_20_categories.dta", replace
+use "updated_merged_data_trans_21_22.dta", clear
+merge m:1 level_one using "top_20_categories.dta", keep(master match) nogenerate
+drop if rank == .
+drop count rank
+
+collapse (sum) transfers_dummy, by(level_one department)
+
+
+gen num_transfers = transfers_dummy
+replace num_transfers = 5 if transfers_dummy > 5
+contract level_one num_transfers, freq(department_count)
+gsort level_one num_transfers
+
+reshape wide department_count, i(level_one) j(num_transfers)
+order level_one department_count*
+
+rename department_count0 department_count_0_transfers
+rename department_count1 department_count_1_transfer
+rename department_count2 department_count_2_transfers
+rename department_count3 department_count_3_transfers
+rename department_count4 department_count_4_transfers
+rename department_count5 department_count_5_transfers
+
+list level_one department_count*, sepby(level_one)
+restore
+*****************************************************
+************** Figure 1
+************** Provincial Distribution 
+*****************************************************
+preserve
+gen complaint_date_stata = date(complaint_date, "YMD")
+format complaint_date_stata %td
+gen month_complaint_date = mofd(complaint_date_stata)
+format month_complaint_date %tm
+
+gen age = floor((td(06Feb2023) - date(dob, "YMD")) / (365.25))
+gen yr = date(complaint_date, "YMD")
+gen complaint_year = year(yr)
+drop yr
+replace complaint_province = subinstr(complaint_province, "Federal Govt", "Punjab", .) // to include Islamabad inside Punjab
+
+gen complaint_count = 1
+collapse (sum) complaint_count, by(complaint_province)
+replace complaint_province = subinstr(complaint_province, "Azad Jammu and Kashmir", "Jammu and Kashmir", .)
+replace complaint_province = subinstr(complaint_province, "Federal Govt", "Islamabad", .)
+gen population = .
+replace population = 4045367 if complaint_province == "Jammu and Kashmir"
+replace population = 12335129 if complaint_province == "Balochistan"   
+replace population = 1492924 if complaint_province == "Gilgit-Baltistan"  
+replace population = 35501964 if complaint_province == "Khyber Pakhtunkhwa" 
+replace population = 111993023 if complaint_province == "Punjab" 
+replace population = 47854510 if complaint_province == "Sindh" 
+
+gen complaints_per_1000 = (complaint_count / population) * 1000
+rename complaint_province province
+rename complaints_per_1000 per_1000_destination
+
+save "tmp_data\complint_province", replace
+
+use "updated_merged_data_trans_21_22.dta", clear
+
+gen complaint_date_stata = date(complaint_date, "YMD")
+format complaint_date_stata %td
+gen month_complaint_date = mofd(complaint_date_stata)
+format month_complaint_date %tm
+
+gen age = floor((td(06Feb2023) - date(dob, "YMD")) / (365.25))
+gen yr = date(complaint_date, "YMD")
+gen complaint_year = year(yr)
+drop yr
+replace citizen_province = subinstr(citizen_province, "Federal Govt", "Punjab", .) // to merge Islamabad with Punjab
+gen complaint_count = 1
+
+collapse (sum) complaint_count, by(citizen_province)
+drop if citizen_province == ""
+replace citizen_province = subinstr(citizen_province, "Azad Jammu and Kashmir", "Jammu and Kashmir", .)
+
+gen population = .
+replace population = 4045367 if citizen_province == "Jammu and Kashmir"
+replace population = 12335129 if citizen_province == "Balochistan"   
+replace population = 1492924 if citizen_province == "Gilgit-Baltistan"  
+replace population = 35501964 if citizen_province == "Khyber Pakhtunkhwa" 
+replace population = 111993023 if citizen_province == "Punjab" 
+replace population = 47854510 if citizen_province == "Sindh"  
+
+gen complaints_per_1000 = (complaint_count / population) * 1000
+rename citizen_province province
+rename complaints_per_1000 per_1000_origination
+
+merge 1:1 province using "tmp_data\complint_province"
+
+graph bar (mean) per_1000_origination per_1000_destination, ///
+    over(province, label(angle(45) labsize(small))) ///
+    asyvars ///
+	blabel(bar, format(%9.2f)) ///
+	ylabel(0(3)12, format(%9.0fc) angle(horizontal)) ///
+	ytitle("Complaints per 1,000 population") ///
+    legend(label(1 "Origination") label(2 "Destination")) ///
+	graphregion(color(white)) ///
+    plotregion(color(white)) ///
+    bgcolor(white) ///
+    bar(1, fcolor(blue)) bar(2, fcolor(forest_green))
+gr_edit grpaxis.style.editstyle majorstyle(tickangle(forty_five))
+gr_edit plotregion1.bars[5].style.editstyle linestyle(color(black))
+gr_edit plotregion1.bars[6].style.editstyle linestyle(color(black))
+
+restore
+*****************************************************
+************** Figure 2
+************** Age Distribution
+*****************************************************
+preserve
+gen dob_2 = date(dob, "YMD")
+order dob_2, after(dob)
+drop dob
+rename dob_2 dob
+format %tdCCYY.NN.DD dob
+
+gen complaint_date_2 = date(complaint_date, "YMD")
+order complaint_date_2, after(complaint_date)
+drop complaint_date
+rename complaint_date_2 complaint_date
+format %tdCCYY.NN.DD complaint_date
+
+drop if dob == .
+gen age = int((complaint_date - dob) / 365.25)
+
+gen age_group = .
+replace age_group = 1 if age < 35
+replace age_group = 2 if age >= 35 & age <= 55
+replace age_group = 3 if age > 50
+
+label define age_group_labels ///
+    1 "<35" ///
+    2 "35-55" ///
+    3 ">55"
+
+label values age_group age_group_labels
+
+gen real_age_group = .
+replace real_age_group = 72.82 if age_group == 1
+replace real_age_group = 18.69 if age_group == 2
+replace real_age_group = 8.48 if age_group == 3
+
+gen complaint_count = 1
+drop if age_group == .
+collapse (sum) complaint_count, by(age_group real_age_group)
+
+egen total_complaints = total(complaint_count)
+gen pct_complaint = (complaint_count / total_complaints) * 100
+format pct_complaint %6.2f
+
+graph bar pct_complaint real_age_group, ///
+    over(age_group, label(angle(315) labsize(small))) /// 
+    ylabel(0(20)60, format(%9.0fc) angle(horizontal)) /// 
+    ytitle("Percentage (%)") /// 
+    blabel(bar, format(%9.0f) size(vsmall) position(outside) color(black)) /// 
+    legend(order(1 "Share of PCP Complainants" 2 "Share of Population") col(1)) /// 
+    graphregion(color(white)) /// 
+    bar(1, color(blue)) ///
+    bar(2, color(pink)) ///
+    plotregion(color(white)) ///
+    bgcolor(white) ///
+    scheme(s1color)	
+restore
+*****************************************************
+************** Figure 3
+************** Resolution by age
+*****************************************************
+preserve
+drop if citizen_resolution_status == ""
+
+gen dob_2 = date(dob, "YMD")
+order dob_2, after(dob)
+drop dob
+rename dob_2 dob
+format %tdCCYY.NN.DD dob
+
+gen complaint_date_2 = date(complaint_date, "YMD")
+order complaint_date_2, after(complaint_date)
+drop complaint_date
+rename complaint_date_2 complaint_date
+format %tdCCYY.NN.DD complaint_date
+
+drop if dob == .
+gen age = int((complaint_date - dob) / 365.25)
+
+gen age_group = .
+replace age_group = 1 if age < 35
+replace age_group = 2 if age >= 35 & age <= 55
+replace age_group = 3 if age > 50
+
+label define age_group_labels ///
+    1 "<35" ///
+    2 "35-55" ///
+    3 ">55"
+
+label values age_group age_group_labels
+
+gen citizen_resolution_rate = 0
+bysort age_group: replace citizen_resolution_rate = 1 if citizen_resolution_status == "Resolved"
+
+gen government_resolution_rate = 0
+bysort age_group: replace government_resolution_rate = 1 if resolution_status == "Relief granted"
+
+replace government_resolution_rate = government_resolution_rate * 100
+replace citizen_resolution_rate = citizen_resolution_rate * 100
+
+collapse (mean) citizen_resolution_rate (mean) government_resolution_rate, by(age_group)
+
+graph bar citizen_resolution_rate government_resolution_rate, ///
+    over(age_group, label(angle(315) labsize(small))) /// 
+    ylabel(0(10)50, angle(horizontal) format(%9.0f)) /// 
+    ytitle("Resolved Share (%)") /// 
+    blabel(bar, format(%9.2f) size(vsmall) position(outside) color(black)) /// 
+    legend(order(1 "Citizens' Complaint Resolution Rate (%)" 2 "Government Complaint Resolution Rate (%)") col(1)) /// 
+    graphregion(color(white)) /// 
+    bar(1, color(pink)) ///
+    bar(2, color(blue)) ///
+    plotregion(color(white)) ///
+    bgcolor(white) ///
+    scheme(s1color)
+
+restore	
+
+*****************************************************
+************** Figure 4
+************** Event Study
+************** Part 1. Data preparation
+*****************************************************
+clear all
+set more off
+set matsize 11000
+
+use "updated_merged_data_trans_21_22.dta", clear
+
+* 2. Create dummy variable for unresolved complaints
+gen dummies1 = 0 if !missing(citizen_resolution_status)
+replace dummies1 = 1 if citizen_resolution_status == "Not Resolved" 
+replace dummies1 = . if citizen_resolution_status == "" 
+
+tabulate level_one, generate(dummy_level_one_) 
+tabulate citizen_province, generate(dummy_citizen_province_) 
+tabulate qualification, generate(dummy_qualification_) 
+tabulate profession, generate(dummy_profession_) 
+tabulate gender, generate(dummy_gender_)
+
+gen complaint_date_num = date(complaint_date, "YMD")
+format complaint_date_num %td  
+gen quarter_complaint = qofd(complaint_date_num)  
+format quarter_complaint %tq 
+preserve  
+    gen complaint_counter = 1  
+    collapse (sum) complaint_count = complaint_counter ///  // Total complaints per quarter
+             (max) transfers_dummy ///  // Retain transfer status			
+             (mean) citizen_resolution_rate = dummies1 ///  // Average resolution rate
+             (mean) star ///  // Average star rating
+			 (max) dummy_gender_* ///
+			 (max) dummy_profession_* ///
+			 (max) dummy_qualification_* ///
+			 (max) dummy_citizen_province_* ///
+			 (max) dummy_level_one_*, ///
+             by(department quarter_complaint)
+    tempfile agg_data
+    save `agg_data'  
+restore  
+
+preserve
+    keep department
+    duplicates drop  
+    tempfile depts
+    save `depts'  
+
+    clear
+    set obs 7
+    gen quarter_complaint = tq(2021q1) + _n -1  // Generate 7 quarters: 2021Q1-2022Q3
+    format quarter_complaint %tq
+    tempfile qtrs
+    save `qtrs'  
+
+    cross using `depts' 
+    merge 1:1 department quarter_complaint using `agg_data', nogen  
+    replace complaint_count = 0 if missing(complaint_count)  // Treat missing as 0 complaints
+    tempfile full_panel
+    save `full_panel'  
+restore
+
+use `full_panel', clear
+bysort department (quarter_complaint): replace transfers_dummy = transfers_dummy[_n-1] if missing(transfers_dummy)
+bysort department (quarter_complaint): egen first_transfer_quarter = min(cond(transfers_dummy == 1, quarter_complaint, .))
+gen quarter_transfer = first_transfer_quarter if transfers_dummy == 1
+format quarter_transfer %tq  
+
+gen year_complaint = yofd(dofq(quarter_complaint))  
+
+foreach var of varlist _all {
+    local clean_name = strtoname("`var'", 1)  
+    capture rename `var' `clean_name' 
+}
+
+// save "C:/Users/Admin/Downloads/full_panel_data_quarterly.dta", replace
+
+*****************************************************
+************** Figure 4
+************** Event Study
+************** Part 2. Event Study Figure
+*****************************************************
+* Estimators: Borusyak et al. (2021), TWFE OLS (reghfe), 
+* de Chaisemartin and D'Haultfoeuille (2024), 
+* Callaway and Sant'Anna (2020), Sun and Abraham (2020)
+********************************************************
+
+use "full_panel_data_quarterly.dta", clear
+
+// 1. Make data ready for event study
+
+* Categorical variables
+encode department, generate(department_num)
+gen quarter_complaint_date = quarter_complaint
+gen quarter_transfer_date = quarter_transfer
+
+* Event date variable
+gen Ei = quarter_transfer
+format Ei %tq
+
+xtset department_num quarter_complaint_date
+
+* Outcome variables
+gen X = citizen_resolution_rate
+gen Y = 1 - citizen_resolution_rate
+ 
+bysort department_num: egen transfer_long = max(cond(quarter_transfer > 0, quarter_transfer_date, .))
+format transfer_long %tq
+
+* Create K (difference between time of treatment and quarter of PCP time), D (treatment indicator)
+gen K = quarter_complaint_date - transfer_long
+gen D = (K >= 0) & !missing(K)
+
+by department_num (quarter_complaint_date), sort: gen D_max = sum(D)
+by department_num: replace D = 1 if D_max > 0
+drop D_max
+
+by department_num: gen lag_D = D[_n-1]
+by department_num: gen lead_D = D[_n+1]
+gen Gf = (D > lag_D) - (D < lag_D)
+gen Gb = (D > lead_D) - (D < lead_D)
+
+ds dummy_level_one_*
+local leveldummies = r(varlist)
+local leveldummies : list leveldummies - dummy_level_one_
+
+ds dummy_gender_*
+local genderdummies = r(varlist)
+local genderdummies : list genderdummies - dummy_gender_
+
+ds dummy_profession_*
+local professiondummies = r(varlist)
+local professiondummies : list professiondummies - dummy_profession_
+
+ds dummy_qualification_*
+local qualificationdummies = r(varlist)
+local qualificationdummies : list qualificationdummies - dummy_qualification_
+
+ds dummy_citizen_province_*
+local citizen_provincedummies = r(varlist)
+local citizen_provincedummies : list citizen_provincedummies - dummy_citizen_province_
+
+* Define leads and lags
+forvalues l = 0/4 {
+    gen L`l'event = K == `l'
+}
+forvalues l = 1/3 {
+    gen F`l'event = K == -`l'
+}
+
+
+// a) Borusyak et al. (2021)
+
+did_imputation Y department_num quarter_complaint_date transfer_long, pretrend(2) allhorizons autosample minn(0) cluster(department_num) /// 
+
+estimates store bjs
+
+event_plot, default_look stub_lag(tau#) stub_lead(pre#) ///
+    graph_opt(xtitle("Quarters since transfers") ytitle("Average causal effect") ///
+    title("Borusyak et al. (2021)") xlabel(-4(1)4))
+	
+// b) de Chaisemartin and D'Haultfoeuille (2024)
+
+did_multiplegt_dyn Y department_num quarter_complaint_date D, effects(4) placebo(2) cluster(department_num)
+event_plot e(estimates)#e(variances), default_look stub_lag(Effect_#) stub_lead(Placebo_#) ///
+    graph_opt(xtitle("Months since the event") ytitle("Average causal effect") ///
+    title("de Chaisemartin and D'Haultfoeuille (2024)") xlabel(-4(1)4))
+matrix dcdh_b = e(estimates)
+matrix dcdh_v = e(variances)
+
+// Optional: also check the previous version of de Chaisemartin and D'Haultfoeuille
+/*
+// b) de Chaisemartin and D'Haultfoeuille (2020)
+did_multiplegt Y department_num quarter_complaint_date D, robust_dynamic dynamic(4) placebo(2) breps(100) cluster(department_num)
+event_plot e(estimates)#e(variances), default_look stub_lag(Effect_#) stub_lead(Placebo_#) ///
+    graph_opt(xtitle("Months since the event") ytitle("Average causal effect") ///
+    title("de Chaisemartin and D'Haultfoeuille (2020)") xlabel(-2(1)2) ylabel(-1(.5)1)) together
+
+matrix dcdh_b1 = e(estimates)
+matrix dcdh_v1 = e(variances)
+*/
+
+// c) Callaway and Sant'Anna (2020)
+
+gen gvar = cond(transfer_long==., 0, transfer_long) 
+csdid Y, ivar(department_num) time(quarter_complaint_date) gvar(gvar) method(dripw)
+estat event, estore(cs)
+event_plot cs, default_look stub_lag(Tp#) stub_lead(Tm#) ///
+    graph_opt(xtitle("Quarters since transfers") ytitle("Average causal effect") xlabel(-3(1)3))
+	
+// d) Sun and Abraham (2020)
+
+eventstudyinteract Y F1event F2event F3event ///
+L0event L1event L2event L3event L4event, ///
+vce(cluster department_num) absorb(quarter_complaint_date department_num) cohort(transfer_long) control_cohort(F1event)
+event_plot e(b_iw)#e(V_iw), default_look stub_lag(L#event) stub_lead(F#event) ///
+    graph_opt(xtitle("Quarters since transfers") ytitle("Average causal effect") xlabel(-6(1)6))
+
+matrix sa_b = e(b_iw)
+matrix sa_v = e(V_iw)
+
+// e) TWFE OLS regression
+
+reghdfe Y o.F1event F2event F3event ///
+L0event L1event L2event L3event L4event, ///
+a(quarter_complaint_date department_num `leveldummies' `genderdummies' `professiondummies' `qualificationdummies' `citizen_provincedummies') cluster(department_num)
+
+event_plot, default_look stub_lag(L#event) stub_lead(F#event) ///
+    graph_opt(xtitle("Quarters since transfers") ytitle("OLS coefficients") xlabel(-4(1)4) title("OLS"))
+
+estimates store ols
+
+// Final event plot with all estimators
+
+event_plot bjs dcdh_b#dcdh_v cs sa_b#sa_v ols, ///
+    stub_lag(tau# Effect_# Tp# L#event L#event) stub_lead(pre# Placebo_# Tm# F#event F#event) plottype(scatter) ciplottype(rcap) ///
+    together perturb(-0.325(0.13)0.325) trimlead(2) trimlag(4) noautolegend ///
+    graph_opt( ///
+        xtitle("Quarters since transfers") ytitle("Average causal effect") xlabel(-2(1)4) ///
+        legend(order(1 "Borusyak et al." 3 "de Chaisemartin and D'Haultfoeuille" 5 "Callaway-Sant'Anna" 7 "Sun-Abraham" 9 "OLS") rows(3) region(style(none))) ///
+        xline(-0.5, lcolor(gs8) lpattern(dash)) yline(0, lcolor(gs8)) graphregion(color(white)) bgcolor(white) ylabel(, angle(horizontal))) ///
+    lag_opt1(msymbol(O) color(cranberry)) lag_ci_opt1(color(cranberry)) ///
+    lag_opt2(msymbol(Dh) color(navy)) lag_ci_opt2(color(navy)) ///
+    lag_opt3(msymbol(Th) color(forest_green)) lag_ci_opt3(color(forest_green)) ///
+    lag_opt4(msymbol(Sh) color(dkorange)) lag_ci_opt4(color(dkorange)) ///
+	lag_opt5(msymbol(+) color(lavender)) lag_ci_opt5(color(lavender))
+
+// graph export "C:/Users/Admin/Downloads/tmp_q/Resolved/full_sample.png", replace
+
+************************************************************
+**************** Table 2
+**************** Regression of Transfers on Resolved rate
+************************************************************
+use "C:\Users\Admin\Downloads\updated_merged_data_trans_21_22.dta", clear
+drop if citizen_resolution_status == ""
+
+gen complaint_date_num = date(complaint_date, "YMD")
+format complaint_date_num %td 
+gen quarter_complaint = qofd(complaint_date_num)  
+format quarter_complaint %tq 
+
+gen age = floor((td(30Sept2022) - date(dob, "YMD")) / (365.25))
+gen yr = date(complaint_date, "YMD")
+gen complaint_year = year(yr)
+drop yr
+
+gen Resolved_dummy = 0
+
+replace Resolved_dummy = 1 if citizen_resolution_status == "Not Resolved"
+replace Resolved_dummy = 1 - Resolved_dummy
+
+encode department, generate(department_num)
+encode level_one, generate(level_one_dummies)
+encode gender, generate(gender_num)
+encode profession, generate(profession_num)
+encode qualification, generate(qualification_num)
+encode citizen_province, generate(citizen_province_num)
+
+local complainant_characteristics gender_num profession_num qualification_num citizen_province
+
+qui sum Resolved_dummy
+local mean_var = r(mean)
+
+reghdfe Resolved_dummy transfers_dummy i.level_one_dummies i.gender_num i.profession_num i.qualification_num i.citizen_province_num, absorb(quarter_complaint department_num) vce(cluster department_num)
+
+generate sample = e(sample)
+
+
+reghdfe Resolved_dummy transfers_dummy if sample==1, absorb(quarter_complaint department_num) vce(cluster department_num)
+outreg2 using reg_transfers.tex, replace tex(frag) nocons dec(4) keep(transfers_dummy) ///
+    ctitle("Resolved") addtext("Time FE", YES, "Department FE", YES, "Category Controls", NO, "Complainant Controls", NO) ///
+    addstat("Mean Dep. Var.", `mean_var', "Adj. R-squared", e(r2_a)) label
+
+reghdfe Resolved_dummy transfers_dummy i.level_one_dummies if sample==1, absorb(quarter_complaint department_num) vce(cluster department_num)
+outreg2 using reg_transfers.tex, append tex(frag) nocons dec(4) keep(transfers_dummy) ///
+    ctitle("Resolved") addtext("Time FE", YES, "Department FE", YES, "Category Controls", YES, "Complainant Controls", NO) ///
+    addstat("Mean Dep. Var.", `mean_var', "Adj. R-squared", e(r2_a)) label
+
+reghdfe Resolved_dummy transfers_dummy i.level_one_dummies i.gender_num i.profession_num i.qualification_num i.citizen_province_num if sample==1, absorb(quarter_complaint department_num) vce(cluster department_num)
+outreg2 using reg_transfers.tex, append tex(frag) nocons dec(4) keep(transfers_dummy) ///
+    ctitle("Resolved") addtext("Time FE", YES, "Department FE", YES, "Category Controls", YES, "Complainant Controls", YES) ///
+    addstat("Mean Dep. Var.", `mean_var', "Adj. R-squared", e(r2_a)) label
